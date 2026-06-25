@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Property {
+  id        String          @id @default(cuid())
+  name      String
+  address   String?
+  pin       String // short shared PIN cleaners enter to start
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  items     ChecklistItem[]
+  runs      CleaningRun[]
+}
+
+model ChecklistItem {
+  id            String       @id @default(cuid())
+  propertyId    String
+  property      Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  order         Int          @default(0)
+  title         String // e.g. "Master bathroom tub"
+  tips          String? // how-to reminders shown to the cleaner
+  qcPrompt      String // what Claude should verify, e.g. "No visible hair in the tub or drain"
+  requiresPhoto Boolean      @default(true)
+  results       ItemResult[]
+
+  @@index([propertyId])
+}
+
+model CleaningRun {
+  id          String       @id @default(cuid())
+  propertyId  String
+  property    Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  cleanerName String?
+  status      String       @default("in_progress") // in_progress | completed
+  startedAt   DateTime     @default(now())
+  completedAt DateTime?
+  reportSent  Boolean      @default(false)
+  results     ItemResult[]
+
+  @@index([propertyId])
+}
+
+model ItemResult {
+  id           String        @id @default(cuid())
+  runId        String
+  run          CleaningRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  itemId       String
+  item         ChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  photo        Bytes? // normalized JPEG, nulled out after the report is emailed
+  blurry       Boolean?
+  qcPass       Boolean?
+  qcConfidence Float?
+  qcNotes      String?
+  aiRaw        String? // raw JSON from Claude for debugging
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([runId, itemId])
+}
+
+model Settings {
+  id         Int      @id @default(1)
+  recipients String   @default("") // comma-separated override for REPORT_RECIPIENTS
+  fromEmail  String? // override for RESEND_FROM
+  updatedAt  DateTime @updatedAt
+}

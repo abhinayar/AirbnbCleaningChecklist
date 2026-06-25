@@ -1,0 +1,377 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+type Item = {
+  id: string;
+  title: string;
+  tips: string | null;
+  qcPrompt: string;
+  requiresPhoto: boolean;
+  order: number;
+};
+type Property = {
+  id: string;
+  name: string;
+  address: string | null;
+  pin: string;
+  active: boolean;
+  items: Item[];
+};
+
+export default function AdminPage() {
+  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [recipients, setRecipients] = useState("");
+  const [fromEmail, setFromEmail] = useState("");
+  const [settingsMsg, setSettingsMsg] = useState("");
+
+  // New property form
+  const [npName, setNpName] = useState("");
+  const [npAddress, setNpAddress] = useState("");
+  const [npPin, setNpPin] = useState("");
+
+  async function loadAll() {
+    const res = await fetch("/api/admin/properties");
+    if (res.status === 401) {
+      setAuthed(false);
+      return;
+    }
+    setAuthed(true);
+    const data = await res.json();
+    setProperties(data.properties);
+    const sres = await fetch("/api/admin/settings");
+    if (sres.ok) {
+      const sdata = await sres.json();
+      setRecipients(sdata.settings.recipients || "");
+      setFromEmail(sdata.settings.fromEmail || "");
+    }
+  }
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  async function login(e: React.FormEvent) {
+    e.preventDefault();
+    setLoginError("");
+    const res = await fetch("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      setLoginError(d.error || "Login failed.");
+      return;
+    }
+    setPassword("");
+    loadAll();
+  }
+
+  async function logout() {
+    await fetch("/api/admin/logout", { method: "POST" });
+    setAuthed(false);
+  }
+
+  async function addProperty(e: React.FormEvent) {
+    e.preventDefault();
+    const res = await fetch("/api/admin/properties", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: npName, address: npAddress, pin: npPin }),
+    });
+    if (res.ok) {
+      setNpName("");
+      setNpAddress("");
+      setNpPin("");
+      loadAll();
+    }
+  }
+
+  async function updateProperty(id: string, patch: Partial<Property>) {
+    await fetch(`/api/admin/properties/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    loadAll();
+  }
+
+  async function deleteProperty(id: string) {
+    if (!confirm("Delete this property and all its checklist items?")) return;
+    await fetch(`/api/admin/properties/${id}`, { method: "DELETE" });
+    loadAll();
+  }
+
+  async function addItem(
+    propertyId: string,
+    fields: { title: string; tips: string; qcPrompt: string; requiresPhoto: boolean },
+  ) {
+    await fetch("/api/admin/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ propertyId, ...fields }),
+    });
+    loadAll();
+  }
+
+  async function deleteItem(id: string) {
+    await fetch(`/api/admin/items/${id}`, { method: "DELETE" });
+    loadAll();
+  }
+
+  async function saveSettings(e: React.FormEvent) {
+    e.preventDefault();
+    setSettingsMsg("");
+    const res = await fetch("/api/admin/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipients, fromEmail }),
+    });
+    setSettingsMsg(res.ok ? "Saved." : "Failed to save.");
+  }
+
+  if (authed === null) {
+    return <main className="p-8 text-sm text-gray-500">Loading…</main>;
+  }
+
+  if (!authed) {
+    return (
+      <main className="mx-auto max-w-sm px-4 py-16">
+        <h1 className="text-2xl font-bold">Admin</h1>
+        <form onSubmit={login} className="mt-6 space-y-4">
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Admin password"
+            autoFocus
+            className="w-full rounded-lg border border-gray-300 px-3 py-2"
+          />
+          {loginError && <p className="text-sm text-red-600">{loginError}</p>}
+          <button className="w-full rounded-lg bg-black px-4 py-3 font-medium text-white">
+            Log in
+          </button>
+        </form>
+        <Link href="/" className="mt-6 inline-block text-sm text-gray-400 underline">
+          ← Back
+        </Link>
+      </main>
+    );
+  }
+
+  return (
+    <main className="mx-auto max-w-2xl px-4 py-8">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Admin</h1>
+        <button onClick={logout} className="text-sm text-gray-500 underline">
+          Log out
+        </button>
+      </div>
+
+      {/* Settings */}
+      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
+        <h2 className="font-semibold">Report email settings</h2>
+        <form onSubmit={saveSettings} className="mt-3 space-y-3">
+          <div>
+            <label className="block text-sm font-medium">
+              Recipients (comma-separated, up to 3+)
+            </label>
+            <input
+              value={recipients}
+              onChange={(e) => setRecipients(e.target.value)}
+              placeholder="a@x.com, b@y.com, c@z.com"
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium">
+              From address (must be verified in Resend)
+            </label>
+            <input
+              value={fromEmail}
+              onChange={(e) => setFromEmail(e.target.value)}
+              placeholder="Cleaning QC <onboarding@resend.dev>"
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white">
+              Save settings
+            </button>
+            {settingsMsg && (
+              <span className="text-sm text-gray-500">{settingsMsg}</span>
+            )}
+          </div>
+        </form>
+      </section>
+
+      {/* Add property */}
+      <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
+        <h2 className="font-semibold">Add property</h2>
+        <form onSubmit={addProperty} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <input
+            value={npName}
+            onChange={(e) => setNpName(e.target.value)}
+            placeholder="Name"
+            className="rounded-lg border border-gray-300 px-3 py-2"
+          />
+          <input
+            value={npAddress}
+            onChange={(e) => setNpAddress(e.target.value)}
+            placeholder="Address (optional)"
+            className="rounded-lg border border-gray-300 px-3 py-2"
+          />
+          <input
+            value={npPin}
+            onChange={(e) => setNpPin(e.target.value)}
+            placeholder="PIN"
+            className="rounded-lg border border-gray-300 px-3 py-2"
+          />
+          <button className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white sm:col-span-3">
+            Add property
+          </button>
+        </form>
+      </section>
+
+      {/* Properties */}
+      <section className="mt-6 space-y-5">
+        {properties.map((p) => (
+          <PropertyCard
+            key={p.id}
+            property={p}
+            onUpdate={updateProperty}
+            onDelete={deleteProperty}
+            onAddItem={addItem}
+            onDeleteItem={deleteItem}
+          />
+        ))}
+      </section>
+    </main>
+  );
+}
+
+function PropertyCard({
+  property,
+  onUpdate,
+  onDelete,
+  onAddItem,
+  onDeleteItem,
+}: {
+  property: Property;
+  onUpdate: (id: string, patch: Partial<Property>) => void;
+  onDelete: (id: string) => void;
+  onAddItem: (
+    propertyId: string,
+    fields: { title: string; tips: string; qcPrompt: string; requiresPhoto: boolean },
+  ) => void;
+  onDeleteItem: (id: string) => void;
+}) {
+  const [name, setName] = useState(property.name);
+  const [pin, setPin] = useState(property.pin);
+  const [title, setTitle] = useState("");
+  const [tips, setTips] = useState("");
+  const [qcPrompt, setQcPrompt] = useState("");
+
+  return (
+    <div className="rounded-xl bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => name !== property.name && onUpdate(property.id, { name })}
+          className="flex-1 rounded-lg border border-gray-200 px-3 py-2 font-semibold"
+        />
+        <input
+          value={pin}
+          onChange={(e) => setPin(e.target.value)}
+          onBlur={() => pin !== property.pin && onUpdate(property.id, { pin })}
+          className="w-24 rounded-lg border border-gray-200 px-3 py-2"
+          placeholder="PIN"
+        />
+        <label className="flex items-center gap-1 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            checked={property.active}
+            onChange={(e) => onUpdate(property.id, { active: e.target.checked })}
+          />
+          Active
+        </label>
+        <button
+          onClick={() => onDelete(property.id)}
+          className="text-sm text-red-600 underline"
+        >
+          Delete
+        </button>
+      </div>
+
+      <ul className="mt-4 space-y-2">
+        {property.items.map((it) => (
+          <li
+            key={it.id}
+            className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span className="font-medium">{it.title}</span>
+              <button
+                onClick={() => onDeleteItem(it.id)}
+                className="shrink-0 text-xs text-red-600 underline"
+              >
+                Remove
+              </button>
+            </div>
+            {it.tips && <div className="mt-1 text-gray-500">Tips: {it.tips}</div>}
+            <div className="mt-1 text-gray-500">QC: {it.qcPrompt}</div>
+          </li>
+        ))}
+        {property.items.length === 0 && (
+          <li className="text-sm text-gray-400">No items yet.</li>
+        )}
+      </ul>
+
+      <div className="mt-4 space-y-2 border-t pt-4">
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Item title (e.g. Master bathroom tub)"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <input
+          value={tips}
+          onChange={(e) => setTips(e.target.value)}
+          placeholder="Cleaning tips / reminders (optional)"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <textarea
+          value={qcPrompt}
+          onChange={(e) => setQcPrompt(e.target.value)}
+          placeholder="What should the AI check for? (e.g. No visible hair in the tub or drain)"
+          rows={2}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <button
+          onClick={() => {
+            if (!title.trim() || !qcPrompt.trim()) return;
+            onAddItem(property.id, {
+              title,
+              tips,
+              qcPrompt,
+              requiresPhoto: true,
+            });
+            setTitle("");
+            setTips("");
+            setQcPrompt("");
+          }}
+          className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+        >
+          Add checklist item
+        </button>
+      </div>
+    </div>
+  );
+}
