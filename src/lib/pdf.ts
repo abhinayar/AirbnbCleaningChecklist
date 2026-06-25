@@ -11,12 +11,19 @@ export type PdfItem = {
   photo: Buffer | null; // normalized JPEG
 };
 
+export type PdfArea = {
+  name: string;
+  kind: string; // "common" | "room"
+  skippedReason?: string | null; // set when a room was not cleaned
+  items: PdfItem[];
+};
+
 export type PdfInput = {
   propertyName: string;
   propertyAddress?: string | null;
   cleanerName?: string | null;
   completedAt: Date;
-  items: PdfItem[];
+  areas: PdfArea[];
 };
 
 const PAGE_W = 595.28; // A4
@@ -95,13 +102,19 @@ export async function buildReportPdf(input: PdfInput): Promise<Buffer> {
     (input.cleanerName ? ` • Cleaner: ${input.cleanerName}` : "");
   drawLines(summary, { size: 11, color: GRAY, gap: 6 });
 
-  const passed = input.items.filter((i) => i.pass).length;
-  drawLines(`${passed} of ${input.items.length} items passed QC`, {
-    font: bold,
-    size: 12,
-    color: passed === input.items.length ? GREEN : AMBER,
-    gap: 10,
-  });
+  const allItems = input.areas.flatMap((a) => a.items);
+  const passed = allItems.filter((i) => i.pass).length;
+  const skippedRooms = input.areas.filter((a) => a.skippedReason).length;
+  drawLines(
+    `${passed} of ${allItems.length} items passed QC` +
+      (skippedRooms > 0 ? `  •  ${skippedRooms} room(s) not cleaned` : ""),
+    {
+      font: bold,
+      size: 12,
+      color: passed === allItems.length ? GREEN : AMBER,
+      gap: 10,
+    },
+  );
 
   // divider
   ensureSpace(12);
@@ -113,12 +126,28 @@ export async function buildReportPdf(input: PdfInput): Promise<Buffer> {
   });
   y -= 16;
 
-  // ---- Items ----
-  for (let idx = 0; idx < input.items.length; idx++) {
-    const item = input.items[idx];
+  // ---- Areas & items ----
+  for (const area of input.areas) {
+    ensureSpace(30);
+    const areaLabel =
+      area.kind === "common" ? `${area.name} (daily)` : area.name;
+    drawLines(areaLabel, { font: bold, size: 15, color: rgb(0.2, 0.2, 0.4), gap: 4 });
 
-    ensureSpace(40);
-    drawLines(`${idx + 1}. ${item.title}`, { font: bold, size: 14, gap: 6 });
+    if (area.skippedReason) {
+      drawLines(`Not cleaned — ${area.skippedReason}`, {
+        font: bold,
+        size: 11,
+        color: AMBER,
+        gap: 12,
+      });
+      continue;
+    }
+
+    for (let idx = 0; idx < area.items.length; idx++) {
+      const item = area.items[idx];
+
+      ensureSpace(40);
+      drawLines(`${idx + 1}. ${item.title}`, { font: bold, size: 13, gap: 6 });
 
     // Status badge line
     const status = item.blurry
@@ -163,8 +192,12 @@ export async function buildReportPdf(input: PdfInput): Promise<Buffer> {
       drawLines("(no photo provided)", { size: 10, color: GRAY, gap: 6 });
     }
 
-    // spacing between items
-    y -= 6;
+      // spacing between items
+      y -= 6;
+    }
+
+    // spacing between areas
+    y -= 8;
   }
 
   const bytes = await doc.save();

@@ -11,6 +11,13 @@ type Item = {
   requiresPhoto: boolean;
 };
 
+type Area = {
+  id: string;
+  name: string;
+  kind: "common" | "room";
+  items: Item[];
+};
+
 type QcResult = {
   blurry: boolean;
   pass: boolean;
@@ -38,8 +45,9 @@ export default function CleanPage({
 
   const [runId, setRunId] = useState("");
   const [propertyName, setPropertyName] = useState("");
-  const [items, setItems] = useState<Item[]>([]);
+  const [areas, setAreas] = useState<Area[]>([]);
   const [states, setStates] = useState<Record<string, ItemState>>({});
+  const [skipped, setSkipped] = useState<Record<string, boolean>>({}); // areaId -> skipped
 
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState("");
@@ -59,7 +67,7 @@ export default function CleanPage({
       if (!res.ok) throw new Error(data.error || "Could not start.");
       setRunId(data.runId);
       setPropertyName(data.property.name);
-      setItems(data.items);
+      setAreas(data.areas);
       setStage("checklist");
     } catch (err) {
       setStartError(err instanceof Error ? err.message : "Could not start.");
@@ -99,12 +107,37 @@ export default function CleanPage({
     }
   }
 
-  const requiredItems = items.filter((i) => i.requiresPhoto);
-  const allRequiredDone = requiredItems.every((i) => states[i.id]?.result);
-  const anyBlockingFail = requiredItems.some((i) => {
-    const r = states[i.id]?.result;
-    return r && (r.blurry || !r.pass);
-  });
+  async function toggleSkip(area: Area, skip: boolean) {
+    // Optimistic UI; revert on failure.
+    setSkipped((s) => ({ ...s, [area.id]: skip }));
+    try {
+      const res = await fetch(`/api/runs/${runId}/rooms/${area.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skipped: skip, reason: "Occupied by guests" }),
+      });
+      if (!res.ok) throw new Error();
+      if (skip) {
+        // Clear any local results for that room's items.
+        setStates((s) => {
+          const next = { ...s };
+          for (const it of area.items) delete next[it.id];
+          return next;
+        });
+      }
+    } catch {
+      setSkipped((s) => ({ ...s, [area.id]: !skip }));
+    }
+  }
+
+  // An area is "satisfied" if it's a skipped room, or all its required items have results.
+  function areaSatisfied(area: Area): boolean {
+    if (area.kind === "room" && skipped[area.id]) return true;
+    return area.items
+      .filter((i) => i.requiresPhoto)
+      .every((i) => states[i.id]?.result);
+  }
+  const allSatisfied = areas.every(areaSatisfied);
 
   async function finish() {
     setFinishing(true);
@@ -114,7 +147,9 @@ export default function CleanPage({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not send report.");
       setFinishMsg(
-        `Report sent to ${data.sentTo.length} recipient(s). ${data.passed}/${data.total} items passed QC.`,
+        `Report sent to ${data.sentTo.length} recipient(s). ` +
+          `${data.passed}/${data.total} items passed QC` +
+          (data.skippedRooms ? `, ${data.skippedRooms} room(s) skipped.` : "."),
       );
       setStage("done");
     } catch (err) {
@@ -132,9 +167,7 @@ export default function CleanPage({
           ← All properties
         </Link>
         <h1 className="mt-4 text-2xl font-bold">Start cleaning</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Enter the property PIN to begin.
-        </p>
+        <p className="mt-1 text-sm text-gray-500">Enter the property PIN to begin.</p>
         <form onSubmit={startRun} className="mt-6 space-y-4">
           <div>
             <label className="block text-sm font-medium">Your name (optional)</label>
@@ -187,127 +220,157 @@ export default function CleanPage({
   }
 
   // ---------- Checklist stage ----------
-  const doneCount = items.filter((i) => states[i.id]?.result).length;
   return (
     <main className="mx-auto max-w-md px-4 py-6">
       <header className="mb-4">
         <h1 className="text-xl font-bold">{propertyName}</h1>
         <p className="text-sm text-gray-500">
-          {doneCount}/{items.length} items photographed
+          {areas.filter(areaSatisfied).length}/{areas.length} areas complete
         </p>
       </header>
 
-      <ol className="space-y-4">
-        {items.map((item, idx) => {
-          const st = states[item.id];
-          const r = st?.result;
+      <div className="space-y-6">
+        {areas.map((area) => {
+          const isRoom = area.kind === "room";
+          const isSkipped = isRoom && skipped[area.id];
           return (
-            <li key={item.id} className="rounded-xl bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-2">
-                <h2 className="font-semibold">
-                  {idx + 1}. {item.title}
+            <section key={area.id}>
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="text-sm font-bold uppercase tracking-wide text-gray-600">
+                  {area.name}
+                  {area.kind === "common" && (
+                    <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                      DAILY
+                    </span>
+                  )}
                 </h2>
-                {r && (
-                  <span
-                    className={
-                      "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold " +
-                      (r.blurry
-                        ? "bg-amber-100 text-amber-800"
-                        : r.pass
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800")
-                    }
-                  >
-                    {r.blurry ? "Blurry" : r.pass ? "Pass" : "Fail"}
-                  </span>
+                {isRoom && (
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={!!isSkipped}
+                      onChange={(e) => toggleSkip(area, e.target.checked)}
+                    />
+                    Not cleaned (occupied)
+                  </label>
                 )}
               </div>
 
-              {item.tips && (
-                <p className="mt-1 text-sm text-gray-500">{item.tips}</p>
-              )}
-              <p className="mt-1 text-xs text-gray-400">
-                QC: {item.qcPrompt}
-              </p>
+              {isSkipped ? (
+                <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+                  Marked as not cleaned — occupied by guests. This room will be
+                  noted on the report and its items skipped.
+                </div>
+              ) : (
+                <ol className="space-y-4">
+                  {area.items.map((item, idx) => {
+                    const st = states[item.id];
+                    const r = st?.result;
+                    return (
+                      <li key={item.id} className="rounded-xl bg-white p-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-semibold">
+                            {idx + 1}. {item.title}
+                          </h3>
+                          {r && (
+                            <span
+                              className={
+                                "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold " +
+                                (r.blurry
+                                  ? "bg-amber-100 text-amber-800"
+                                  : r.pass
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-red-100 text-red-800")
+                              }
+                            >
+                              {r.blurry ? "Blurry" : r.pass ? "Pass" : "Fail"}
+                            </span>
+                          )}
+                        </div>
 
-              {st?.previewUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={st.previewUrl}
-                  alt="preview"
-                  className="mt-3 max-h-56 w-full rounded-lg object-cover"
-                />
-              )}
+                        {item.tips && (
+                          <p className="mt-1 text-sm text-gray-500">{item.tips}</p>
+                        )}
+                        <p className="mt-1 text-xs text-gray-400">QC: {item.qcPrompt}</p>
 
-              {st?.uploading && (
-                <p className="mt-2 text-sm text-gray-500">Checking photo…</p>
-              )}
-              {st?.error && (
-                <p className="mt-2 text-sm text-red-600">{st.error}</p>
-              )}
-              {r && (
-                <p
-                  className={
-                    "mt-2 text-sm " +
-                    (r.blurry || !r.pass ? "text-red-700" : "text-green-700")
-                  }
-                >
-                  {r.notes}
-                </p>
-              )}
+                        {st?.previewUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={st.previewUrl}
+                            alt="preview"
+                            className="mt-3 max-h-56 w-full rounded-lg object-cover"
+                          />
+                        )}
 
-              <label className="mt-3 block">
-                <span
-                  className={
-                    "block cursor-pointer rounded-lg px-4 py-2 text-center text-sm font-medium " +
-                    (r && !r.blurry && r.pass
-                      ? "bg-gray-100 text-gray-700"
-                      : "bg-brand text-white")
-                  }
-                >
-                  {st?.uploading
-                    ? "Uploading…"
-                    : r
-                      ? "Retake photo"
-                      : "Take / upload photo"}
-                </span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  disabled={st?.uploading}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) uploadPhoto(item, f);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            </li>
+                        {st?.uploading && (
+                          <p className="mt-2 text-sm text-gray-500">Checking photo…</p>
+                        )}
+                        {st?.error && (
+                          <p className="mt-2 text-sm text-red-600">{st.error}</p>
+                        )}
+                        {r && (
+                          <p
+                            className={
+                              "mt-2 text-sm " +
+                              (r.blurry || !r.pass ? "text-red-700" : "text-green-700")
+                            }
+                          >
+                            {r.notes}
+                          </p>
+                        )}
+
+                        <label className="mt-3 block">
+                          <span
+                            className={
+                              "block cursor-pointer rounded-lg px-4 py-2 text-center text-sm font-medium " +
+                              (r && !r.blurry && r.pass
+                                ? "bg-gray-100 text-gray-700"
+                                : "bg-brand text-white")
+                            }
+                          >
+                            {st?.uploading
+                              ? "Uploading…"
+                              : r
+                                ? "Retake photo"
+                                : "Take / upload photo"}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            disabled={st?.uploading}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) uploadPhoto(item, f);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </section>
           );
         })}
-      </ol>
+      </div>
 
       <div className="sticky bottom-0 mt-6 -mx-4 border-t bg-white/90 px-4 py-4 backdrop-blur">
-        {anyBlockingFail && (
-          <p className="mb-2 text-center text-xs text-amber-700">
-            Some items failed QC. You can retake them, or send the report anyway.
-          </p>
-        )}
         {finishError && (
           <p className="mb-2 text-center text-sm text-red-600">{finishError}</p>
         )}
         <button
           onClick={finish}
-          disabled={finishing || !allRequiredDone}
+          disabled={finishing || !allSatisfied}
           className="w-full rounded-lg bg-black px-4 py-3 font-medium text-white disabled:opacity-40"
         >
           {finishing
             ? "Sending report…"
-            : allRequiredDone
+            : allSatisfied
               ? "Finish & send report"
-              : "Photograph all items to finish"}
+              : "Complete every area to finish"}
         </button>
       </div>
     </main>

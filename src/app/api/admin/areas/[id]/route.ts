@@ -15,21 +15,15 @@ export async function PUT(
   const body = await req.json().catch(() => null);
   const data: Record<string, unknown> = {};
   if (typeof body?.name === "string") data.name = body.name.trim();
-  if (typeof body?.address === "string") data.address = body.address.trim() || null;
-  if (typeof body?.pin === "string") data.pin = body.pin.trim();
-  if (typeof body?.active === "boolean") data.active = body.active;
+  if (body?.kind === "common" || body?.kind === "room") data.kind = body.kind;
+  if (typeof body?.order === "number") data.order = body.order;
 
-  const property = await prisma.property.update({
+  const area = await prisma.area.update({
     where: { id: params.id },
     data,
-    include: {
-      areas: {
-        orderBy: { order: "asc" },
-        include: { items: { orderBy: { order: "asc" } } },
-      },
-    },
+    include: { items: { orderBy: { order: "asc" } } },
   });
-  return NextResponse.json({ property });
+  return NextResponse.json({ area });
 }
 
 export async function DELETE(
@@ -39,6 +33,6 @@ export async function DELETE(
   if (!isAdminAuthed()) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await prisma.property.delete({ where: { id: params.id } });
+  await prisma.area.delete({ where: { id: params.id } });
   return NextResponse.json({ ok: true });
 }

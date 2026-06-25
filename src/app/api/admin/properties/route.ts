@@ -12,7 +12,12 @@ export async function GET() {
   }
   const properties = await prisma.property.findMany({
     orderBy: { createdAt: "asc" },
-    include: { items: { orderBy: { order: "asc" } } },
+    include: {
+      areas: {
+        orderBy: { order: "asc" },
+        include: { items: { orderBy: { order: "asc" } } },
+      },
+    },
   });
   return NextResponse.json({ properties });
 }
@@ -33,7 +38,7 @@ export async function POST(req: NextRequest) {
 
   const property = await prisma.property.create({
     data: { name, address, pin },
-    include: { items: true },
+    include: { areas: { include: { items: true } } },
   });
   return NextResponse.json({ property });
 }

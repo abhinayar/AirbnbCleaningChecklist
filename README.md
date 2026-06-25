@@ -20,13 +20,59 @@ recipients. Photos are then discarded — **the PDF is the only record**.
 
 ## How it works
 
+Each property is organized into **areas**:
+
+- **Common areas** (kind `common`) — cleaned every day, cannot be skipped.
+- **Rooms** (kind `room`) — cleaned on variable days. The cleaner can mark a room
+  as **"not cleaned (occupied)"** to skip its checklist; the skip (with reason) is
+  noted on the report.
+
+Each area holds checklist items; each item has a title, optional cleaning tips,
+and a plain-English **QC rule** for Claude to verify.
+
 1. **Admin** (`/admin`, gated by `ADMIN_PASSWORD`) — create properties with a PIN,
-   add checklist items (title, tips, QC rule), and set the report recipients.
-2. **Cleaner** (`/`) — pick a property → enter PIN → photograph each item.
-   Each photo is normalized, sent to Claude for a blur + QC verdict, and the
-   cleaner sees Pass / Fail / Blurry instantly with a note on what to fix.
-3. **Finish** — the app builds a PDF (header + every item's verdict, notes, and
-   photo) and emails it to the recipients, then nulls the stored photos.
+   add areas (common/room), add checklist items (title, tips, QC rule) per area,
+   and set the report recipients.
+2. **Cleaner** (`/`) — pick a property → enter PIN → work through each area.
+   Common areas are required; rooms can be skipped when occupied. Each photo is
+   normalized, sent to Claude for a blur + QC verdict, and the cleaner sees
+   Pass / Fail / Blurry instantly with a note on what to fix.
+3. **Finish** — the app builds a PDF (grouped by area, with each item's verdict,
+   notes, and photo, and skipped rooms flagged) and emails it to the recipients,
+   then nulls the stored photos.
+
+### Getting checklists in
+
+Two ways, both in `/admin`:
+
+- **Manually** — Add an area, then add items to it one at a time.
+- **Bulk import** — On a property, click *"Bulk import areas + items (JSON)"* and
+  paste a structure like:
+
+  ```json
+  {
+    "areas": [
+      {
+        "name": "Common Areas",
+        "kind": "common",
+        "items": [
+          { "title": "Kitchen counters", "tips": "Wipe & clear",
+            "qcPrompt": "Counters clear and free of crumbs or streaks" }
+        ]
+      },
+      {
+        "name": "Bedroom 1",
+        "kind": "room",
+        "items": [
+          { "title": "Bed made",
+            "qcPrompt": "Bed neatly made, duvet centered, pillows fluffed" }
+        ]
+      }
+    ]
+  }
+  ```
+
+  Areas are appended, so you can build a property up in chunks.
 
 Photos live in the database only for the duration of a run, and are deleted the
 moment the report is sent.

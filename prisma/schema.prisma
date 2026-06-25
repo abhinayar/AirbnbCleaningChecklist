@@ -8,20 +8,35 @@ datasource db {
 }
 
 model Property {
-  id        String          @id @default(cuid())
+  id        String        @id @default(cuid())
   name      String
   address   String?
   pin       String // short shared PIN cleaners enter to start
-  active    Boolean         @default(true)
-  createdAt DateTime        @default(now())
-  items     ChecklistItem[]
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  areas     Area[]
   runs      CleaningRun[]
+}
+
+// An Area groups checklist items within a property.
+//   kind = "common"  -> cleaned every day, cannot be skipped
+//   kind = "room"    -> cleaned on variable days, cleaner may skip (e.g. occupied)
+model Area {
+  id         String          @id @default(cuid())
+  propertyId String
+  property   Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name       String
+  kind       String          @default("room") // "common" | "room"
+  order      Int             @default(0)
+  items      ChecklistItem[]
+
+  @@index([propertyId])
 }
 
 model ChecklistItem {
   id            String       @id @default(cuid())
-  propertyId    String
-  property      Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  areaId        String
+  area          Area         @relation(fields: [areaId], references: [id], onDelete: Cascade)
   order         Int          @default(0)
   title         String // e.g. "Master bathroom tub"
   tips          String? // how-to reminders shown to the cleaner
@@ -29,7 +44,7 @@ model ChecklistItem {
   requiresPhoto Boolean      @default(true)
   results       ItemResult[]
 
-  @@index([propertyId])
+  @@index([areaId])
 }
 
 model CleaningRun {
@@ -42,8 +57,21 @@ model CleaningRun {
   completedAt DateTime?
   reportSent  Boolean      @default(false)
   results     ItemResult[]
+  roomSkips   RoomSkip[]
 
   @@index([propertyId])
+}
+
+// Records a room (Area) the cleaner marked as not cleaned for this run.
+model RoomSkip {
+  id        String      @id @default(cuid())
+  runId     String
+  run       CleaningRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  areaId    String
+  reason    String      @default("Occupied")
+  createdAt DateTime    @default(now())
+
+  @@unique([runId, areaId])
 }
 
 model ItemResult {

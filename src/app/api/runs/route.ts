@@ -17,7 +17,12 @@ export async function POST(req: NextRequest) {
 
   const property = await prisma.property.findUnique({
     where: { id: propertyId },
-    include: { items: { orderBy: { order: "asc" } } },
+    include: {
+      areas: {
+        orderBy: { order: "asc" },
+        include: { items: { orderBy: { order: "asc" } } },
+      },
+    },
   });
 
   if (!property || !property.active) {
@@ -26,7 +31,9 @@ export async function POST(req: NextRequest) {
   if (property.pin !== pin) {
     return NextResponse.json({ error: "Incorrect PIN." }, { status: 401 });
   }
-  if (property.items.length === 0) {
+
+  const areasWithItems = property.areas.filter((a) => a.items.length > 0);
+  if (areasWithItems.length === 0) {
     return NextResponse.json(
       { error: "This property has no checklist items yet." },
       { status: 400 },
@@ -40,12 +47,17 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     runId: run.id,
     property: { id: property.id, name: property.name, address: property.address },
-    items: property.items.map((i) => ({
-      id: i.id,
-      title: i.title,
-      tips: i.tips,
-      qcPrompt: i.qcPrompt,
-      requiresPhoto: i.requiresPhoto,
+    areas: areasWithItems.map((a) => ({
+      id: a.id,
+      name: a.name,
+      kind: a.kind, // "common" | "room"
+      items: a.items.map((i) => ({
+        id: i.id,
+        title: i.title,
+        tips: i.tips,
+        qcPrompt: i.qcPrompt,
+        requiresPhoto: i.requiresPhoto,
+      })),
     })),
   });
 }

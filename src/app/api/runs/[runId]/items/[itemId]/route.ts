@@ -22,10 +22,21 @@ export async function POST(
   }
 
   const item = await prisma.checklistItem.findFirst({
-    where: { id: itemId, propertyId: run.propertyId },
+    where: { id: itemId, area: { propertyId: run.propertyId } },
   });
   if (!item) {
     return NextResponse.json({ error: "Checklist item not found." }, { status: 404 });
+  }
+
+  // Don't accept photos for a room the cleaner marked as not cleaned.
+  const skipped = await prisma.roomSkip.findUnique({
+    where: { runId_areaId: { runId, areaId: item.areaId } },
+  });
+  if (skipped) {
+    return NextResponse.json(
+      { error: "This room is marked as not cleaned. Unmark it to add photos." },
+      { status: 409 },
+    );
   }
 
   const form = await req.formData().catch(() => null);
