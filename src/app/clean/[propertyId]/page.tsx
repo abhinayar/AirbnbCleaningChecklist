@@ -23,7 +23,10 @@ type QcResult = {
   pass: boolean;
   confidence: number;
   notes: string;
+  qcSkipped?: boolean; // true for the Abhi test account (photo captured, no AI QC)
 };
+
+const CLEANERS = ["Leah", "Daniel", "Shubhi", "Abhi"];
 
 type ItemState = {
   uploading: boolean;
@@ -179,13 +182,21 @@ export default function CleanPage({
         <p className="mt-1 text-sm text-gray-500">Enter the property PIN to begin.</p>
         <form onSubmit={startRun} className="mt-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium">Your name (optional)</label>
-            <input
+            <label className="block text-sm font-medium">Your name</label>
+            <select
               value={cleanerName}
               onChange={(e) => setCleanerName(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-              placeholder="e.g. Maria"
-            />
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
+            >
+              <option value="" disabled>
+                Select your name…
+              </option>
+              {CLEANERS.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium">Property PIN</label>
@@ -201,7 +212,7 @@ export default function CleanPage({
           {startError && <p className="text-sm text-red-600">{startError}</p>}
           <button
             type="submit"
-            disabled={starting || !pin}
+            disabled={starting || !pin || !cleanerName}
             className="w-full rounded-lg bg-brand px-4 py-3 font-medium text-white disabled:opacity-50"
           >
             {starting ? "Starting…" : "Start checklist"}
@@ -304,7 +315,12 @@ export default function CleanPage({
                               ✓ Done
                             </span>
                           ) : item.requiresPhoto ? (
-                            r && (
+                            r &&
+                            (r.qcSkipped ? (
+                              <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                                Photo added
+                              </span>
+                            ) : (
                               <span
                                 className={
                                   "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold " +
@@ -317,7 +333,7 @@ export default function CleanPage({
                               >
                                 {r.blurry ? "Blurry" : r.pass ? "Pass" : "Fail"}
                               </span>
-                            )
+                            ))
                           ) : (
                             <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
                               Reminder
@@ -346,7 +362,7 @@ export default function CleanPage({
                             {st?.error && (
                               <p className="mt-2 text-sm text-red-600">{st.error}</p>
                             )}
-                            {r && (
+                            {r && !r.qcSkipped && r.notes && (
                               <p
                                 className={
                                   "mt-2 text-sm " +

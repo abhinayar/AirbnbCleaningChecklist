@@ -58,6 +58,7 @@ export async function POST(
   }
 
   const completedAt = new Date();
+  const isTest = run.cleanerName === "Abhi";
 
   const pdfAreas: PdfArea[] = areas.map((area) => {
     const skip = skipByArea.get(area.id);
@@ -74,6 +75,7 @@ export async function POST(
               tips: item.tips,
               qcPrompt: item.qcPrompt,
               requiresPhoto: item.requiresPhoto,
+              qcSkipped: isTest,
               blurry: r?.blurry ?? null,
               pass: r?.qcPass ?? null,
               confidence: r?.qcConfidence ?? null,
@@ -89,6 +91,7 @@ export async function POST(
     propertyAddress: run.property.address,
     cleanerName: run.cleanerName,
     completedAt,
+    testMode: isTest,
     areas: pdfAreas,
   });
 

@@ -60,7 +60,12 @@ export async function POST(
     );
   }
 
-  const result = await runQc(jpeg, item.title, item.qcPrompt);
+  // Test account: capture the photo but skip the AI QC check entirely.
+  const isTest = run.cleanerName === "Abhi";
+
+  const result = isTest
+    ? { blurry: false, pass: false, confidence: 0, notes: "", qcSkipped: true }
+    : await runQc(jpeg, item.title, item.qcPrompt);
 
   await prisma.itemResult.upsert({
     where: { runId_itemId: { runId, itemId } },
@@ -68,19 +73,19 @@ export async function POST(
       runId,
       itemId,
       photo: jpeg,
-      blurry: result.blurry,
-      qcPass: result.pass,
-      qcConfidence: result.confidence,
-      qcNotes: result.notes,
-      aiRaw: JSON.stringify(result),
+      blurry: isTest ? null : result.blurry,
+      qcPass: isTest ? null : result.pass,
+      qcConfidence: isTest ? null : result.confidence,
+      qcNotes: isTest ? null : result.notes,
+      aiRaw: isTest ? JSON.stringify({ qcSkipped: true }) : JSON.stringify(result),
     },
     update: {
       photo: jpeg,
-      blurry: result.blurry,
-      qcPass: result.pass,
-      qcConfidence: result.confidence,
-      qcNotes: result.notes,
-      aiRaw: JSON.stringify(result),
+      blurry: isTest ? null : result.blurry,
+      qcPass: isTest ? null : result.pass,
+      qcConfidence: isTest ? null : result.confidence,
+      qcNotes: isTest ? null : result.notes,
+      aiRaw: isTest ? JSON.stringify({ qcSkipped: true }) : JSON.stringify(result),
     },
   });
 

@@ -5,6 +5,7 @@ export type PdfItem = {
   tips?: string | null;
   qcPrompt: string;
   requiresPhoto: boolean;
+  qcSkipped?: boolean; // test run — photo captured, no AI QC
   blurry: boolean | null;
   pass: boolean | null;
   confidence: number | null;
@@ -24,6 +25,7 @@ export type PdfInput = {
   propertyAddress?: string | null;
   cleanerName?: string | null;
   completedAt: Date;
+  testMode?: boolean;
   areas: PdfArea[];
 };
 
@@ -98,24 +100,39 @@ export async function buildReportPdf(input: PdfInput): Promise<Buffer> {
   if (input.propertyAddress) {
     drawLines(input.propertyAddress, { size: 11, color: GRAY, gap: 4 });
   }
-  const summary =
-    `Cleaning report • ${input.completedAt.toLocaleString()}` +
-    (input.cleanerName ? ` • Cleaner: ${input.cleanerName}` : "");
-  drawLines(summary, { size: 11, color: GRAY, gap: 6 });
+  drawLines(`Cleaning report • ${input.completedAt.toLocaleString()}`, {
+    size: 11,
+    color: GRAY,
+    gap: 4,
+  });
+  drawLines(`Cleaned by: ${input.cleanerName || "Unknown"}`, {
+    font: bold,
+    size: 13,
+    color: DARK,
+    gap: 8,
+  });
 
   const photoItems = input.areas.flatMap((a) => a.items).filter((i) => i.requiresPhoto);
   const passed = photoItems.filter((i) => i.pass).length;
   const skippedRooms = input.areas.filter((a) => a.skippedReason).length;
-  drawLines(
-    `${passed} of ${photoItems.length} photo checks passed QC` +
-      (skippedRooms > 0 ? `  •  ${skippedRooms} room(s) not cleaned` : ""),
-    {
-      font: bold,
-      size: 12,
-      color: passed === photoItems.length ? GREEN : AMBER,
-      gap: 10,
-    },
-  );
+  if (input.testMode) {
+    drawLines(
+      "Test run — AI QC checks skipped (photos only)" +
+        (skippedRooms > 0 ? `  •  ${skippedRooms} room(s) not cleaned` : ""),
+      { font: bold, size: 12, color: GRAY, gap: 10 },
+    );
+  } else {
+    drawLines(
+      `${passed} of ${photoItems.length} photo checks passed QC` +
+        (skippedRooms > 0 ? `  •  ${skippedRooms} room(s) not cleaned` : ""),
+      {
+        font: bold,
+        size: 12,
+        color: passed === photoItems.length ? GREEN : AMBER,
+        gap: 10,
+      },
+    );
+  }
 
   // divider
   ensureSpace(12);
@@ -160,24 +177,34 @@ export async function buildReportPdf(input: PdfInput): Promise<Buffer> {
       continue;
     }
 
-    // Status badge line
-    const status = item.blurry
-      ? "BLURRY — needs a clearer photo"
-      : item.pass
-        ? "PASS"
-        : "FAIL";
-    const statusColor = item.blurry ? AMBER : item.pass ? GREEN : RED;
-    const conf =
-      item.confidence != null ? `  (confidence ${Math.round(item.confidence * 100)}%)` : "";
-    drawLines(`Status: ${status}${conf}`, {
-      font: bold,
-      size: 11,
-      color: statusColor,
-      gap: 5,
-    });
-
-    if (item.qcPrompt) {
-      drawLines(`Checked for: ${item.qcPrompt}`, { size: 10, color: GRAY, gap: 4 });
+    // Status badge line (skipped entirely for test-run photos)
+    if (item.qcSkipped) {
+      drawLines("Photo captured (QC skipped — test run)", {
+        font: bold,
+        size: 11,
+        color: GRAY,
+        gap: 5,
+      });
+    } else {
+      const status = item.blurry
+        ? "BLURRY — needs a clearer photo"
+        : item.pass
+          ? "PASS"
+          : "FAIL";
+      const statusColor = item.blurry ? AMBER : item.pass ? GREEN : RED;
+      const conf =
+        item.confidence != null
+          ? `  (confidence ${Math.round(item.confidence * 100)}%)`
+          : "";
+      drawLines(`Status: ${status}${conf}`, {
+        font: bold,
+        size: 11,
+        color: statusColor,
+        gap: 5,
+      });
+      if (item.qcPrompt) {
+        drawLines(`Checked for: ${item.qcPrompt}`, { size: 10, color: GRAY, gap: 4 });
+      }
     }
     if (item.tips) {
       drawLines(`Tips: ${item.tips}`, { size: 10, color: GRAY, gap: 4 });
