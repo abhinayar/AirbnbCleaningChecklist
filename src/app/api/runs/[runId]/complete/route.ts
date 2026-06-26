@@ -70,12 +70,15 @@ export async function POST(
         ? []
         : area.items.map((item) => {
             const r = resultByItem.get(item.id);
+            // A photo with no stored verdict (test account or a QC error) should
+            // not be rendered as a FAIL on the report.
+            const verdictMissing = !!r && r.qcPass === null && r.blurry === null;
             return {
               title: item.title,
               tips: item.tips,
               qcPrompt: item.qcPrompt,
               requiresPhoto: item.requiresPhoto,
-              qcSkipped: isTest,
+              qcSkipped: isTest || verdictMissing,
               blurry: r?.blurry ?? null,
               pass: r?.qcPass ?? null,
               confidence: r?.qcConfidence ?? null,

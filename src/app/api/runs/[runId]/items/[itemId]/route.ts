@@ -63,12 +63,30 @@ export async function POST(
     );
   }
 
-  // Test account: capture the photo but skip the AI QC check entirely.
+  // QC must NEVER block capturing the photo or completing the run. The test
+  // account skips QC entirely; for everyone else, a QC error (timeout, rate
+  // limit, API issue) still saves the photo — we just omit the verdict.
   const isTest = run.cleanerName === "Abhi";
 
-  const result = isTest
-    ? { blurry: false, pass: false, confidence: 0, notes: "", qcSkipped: true }
-    : await runQc(jpeg, item.title, item.qcPrompt);
+  let result: {
+    blurry: boolean;
+    pass: boolean;
+    confidence: number;
+    notes: string;
+    qcSkipped?: boolean;
+  };
+  if (isTest) {
+    result = { blurry: false, pass: false, confidence: 0, notes: "", qcSkipped: true };
+  } else {
+    try {
+      result = await runQc(jpeg, item.title, item.qcPrompt);
+    } catch (e) {
+      console.error("QC failed; saving photo without a verdict:", e);
+      result = { blurry: false, pass: false, confidence: 0, notes: "", qcSkipped: true };
+    }
+  }
+
+  const noVerdict = result.qcSkipped === true;
 
   await prisma.itemResult.upsert({
     where: { runId_itemId: { runId, itemId } },
@@ -76,19 +94,19 @@ export async function POST(
       runId,
       itemId,
       photo: jpeg,
-      blurry: isTest ? null : result.blurry,
-      qcPass: isTest ? null : result.pass,
-      qcConfidence: isTest ? null : result.confidence,
-      qcNotes: isTest ? null : result.notes,
-      aiRaw: isTest ? JSON.stringify({ qcSkipped: true }) : JSON.stringify(result),
+      blurry: noVerdict ? null : result.blurry,
+      qcPass: noVerdict ? null : result.pass,
+      qcConfidence: noVerdict ? null : result.confidence,
+      qcNotes: noVerdict ? null : result.notes,
+      aiRaw: JSON.stringify(result),
     },
     update: {
       photo: jpeg,
-      blurry: isTest ? null : result.blurry,
-      qcPass: isTest ? null : result.pass,
-      qcConfidence: isTest ? null : result.confidence,
-      qcNotes: isTest ? null : result.notes,
-      aiRaw: isTest ? JSON.stringify({ qcSkipped: true }) : JSON.stringify(result),
+      blurry: noVerdict ? null : result.blurry,
+      qcPass: noVerdict ? null : result.pass,
+      qcConfidence: noVerdict ? null : result.confidence,
+      qcNotes: noVerdict ? null : result.notes,
+      aiRaw: JSON.stringify(result),
     },
   });
 

@@ -113,25 +113,25 @@ export async function buildReportPdf(input: PdfInput): Promise<Buffer> {
   });
 
   const photoItems = input.areas.flatMap((a) => a.items).filter((i) => i.requiresPhoto);
-  const passed = photoItems.filter((i) => i.pass).length;
+  // Only count items that actually got an AI verdict (exclude test/QC-skipped).
+  const verdictItems = photoItems.filter((i) => !i.qcSkipped);
+  const passed = verdictItems.filter((i) => i.pass).length;
   const skippedRooms = input.areas.filter((a) => a.skippedReason).length;
-  if (input.testMode) {
-    drawLines(
-      "Test run — AI QC checks skipped (photos only)" +
-        (skippedRooms > 0 ? `  •  ${skippedRooms} room(s) not cleaned` : ""),
-      { font: bold, size: 12, color: GRAY, gap: 10 },
-    );
+  const roomNote = skippedRooms > 0 ? `  •  ${skippedRooms} room(s) not cleaned` : "";
+  if (input.testMode || verdictItems.length === 0) {
+    drawLines("Photos captured — automated QC not run" + roomNote, {
+      font: bold,
+      size: 12,
+      color: GRAY,
+      gap: 10,
+    });
   } else {
-    drawLines(
-      `${passed} of ${photoItems.length} photo checks passed QC` +
-        (skippedRooms > 0 ? `  •  ${skippedRooms} room(s) not cleaned` : ""),
-      {
-        font: bold,
-        size: 12,
-        color: passed === photoItems.length ? GREEN : AMBER,
-        gap: 10,
-      },
-    );
+    drawLines(`${passed} of ${verdictItems.length} photo checks passed QC` + roomNote, {
+      font: bold,
+      size: 12,
+      color: passed === verdictItems.length ? GREEN : AMBER,
+      gap: 10,
+    });
   }
 
   // divider
@@ -179,7 +179,7 @@ export async function buildReportPdf(input: PdfInput): Promise<Buffer> {
 
     // Status badge line (skipped entirely for test-run photos)
     if (item.qcSkipped) {
-      drawLines("Photo captured (QC skipped — test run)", {
+      drawLines("Photo captured — automated QC not run", {
         font: bold,
         size: 11,
         color: GRAY,
