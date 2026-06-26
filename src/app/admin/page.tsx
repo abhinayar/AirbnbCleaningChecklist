@@ -496,29 +496,12 @@ function AreaBlock({
 
       <ul className="mt-3 space-y-2">
         {area.items.map((it) => (
-          <li key={it.id} className="rounded-lg bg-gray-50 p-2 text-sm">
-            <div className="flex items-start justify-between gap-2">
-              <span className="font-medium">{it.title}</span>
-              <button
-                onClick={() => onDeleteItem(it.id)}
-                className="shrink-0 text-xs text-red-600 underline"
-              >
-                Remove
-              </button>
-            </div>
-            {it.tips && <div className="mt-0.5 text-gray-500">Tips: {it.tips}</div>}
-            {it.requiresPhoto && it.qcPrompt && (
-              <div className="mt-0.5 text-gray-500">QC: {it.qcPrompt}</div>
-            )}
-            <label className="mt-1 flex items-center gap-1.5 text-xs text-gray-600">
-              <input
-                type="checkbox"
-                checked={it.requiresPhoto}
-                onChange={(e) => onUpdateItem(it.id, { requiresPhoto: e.target.checked })}
-              />
-              Requires photo
-            </label>
-          </li>
+          <ItemRow
+            key={it.id}
+            item={it}
+            onUpdateItem={onUpdateItem}
+            onDeleteItem={onDeleteItem}
+          />
         ))}
         {area.items.length === 0 && (
           <li className="text-sm text-gray-400">No items yet.</li>
@@ -571,6 +554,76 @@ function AreaBlock({
         </button>
       </div>
     </div>
+  );
+}
+
+// An editable row for an existing checklist item. Saves each field on blur.
+function ItemRow({
+  item,
+  onUpdateItem,
+  onDeleteItem,
+}: {
+  item: Item;
+  onUpdateItem: (id: string, patch: Partial<Item>) => void;
+  onDeleteItem: (id: string) => void;
+}) {
+  const [title, setTitle] = useState(item.title);
+  const [tips, setTips] = useState(item.tips ?? "");
+  const [qcPrompt, setQcPrompt] = useState(item.qcPrompt);
+
+  return (
+    <li className="space-y-1.5 rounded-lg bg-gray-50 p-2 text-sm">
+      <div className="flex items-start gap-2">
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => {
+            const v = title.trim();
+            if (v && v !== item.title) onUpdateItem(item.id, { title: v });
+          }}
+          className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 font-medium"
+        />
+        <button
+          onClick={() => onDeleteItem(item.id)}
+          className="shrink-0 text-xs text-red-600 underline"
+        >
+          Remove
+        </button>
+      </div>
+
+      <input
+        value={tips}
+        onChange={(e) => setTips(e.target.value)}
+        onBlur={() => {
+          if (tips !== (item.tips ?? "")) onUpdateItem(item.id, { tips });
+        }}
+        placeholder="Cleaning tips (optional)"
+        className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-gray-600"
+      />
+
+      {item.requiresPhoto && (
+        <textarea
+          value={qcPrompt}
+          onChange={(e) => setQcPrompt(e.target.value)}
+          onBlur={() => {
+            const v = qcPrompt.trim();
+            if (v && v !== item.qcPrompt) onUpdateItem(item.id, { qcPrompt: v });
+          }}
+          rows={2}
+          placeholder="What should the AI check?"
+          className="w-full rounded border border-gray-200 bg-white px-2 py-1 text-gray-600"
+        />
+      )}
+
+      <label className="flex items-center gap-1.5 text-xs text-gray-600">
+        <input
+          type="checkbox"
+          checked={item.requiresPhoto}
+          onChange={(e) => onUpdateItem(item.id, { requiresPhoto: e.target.checked })}
+        />
+        Requires photo
+      </label>
+    </li>
   );
 }
 
