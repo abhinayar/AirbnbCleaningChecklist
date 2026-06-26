@@ -5,7 +5,12 @@ import { isAdminAuthed } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type ImportItem = { title?: string; tips?: string; qcPrompt?: string };
+type ImportItem = {
+  title?: string;
+  tips?: string;
+  qcPrompt?: string;
+  requiresPhoto?: boolean;
+};
 type ImportArea = {
   name?: string;
   kind?: string;
@@ -45,9 +50,12 @@ export async function POST(
     const name = area?.name?.trim();
     if (!name) continue;
     const kind = area.kind === "common" ? "common" : "room";
-    const validItems = (area.items ?? []).filter(
-      (it) => it?.title?.trim() && it?.qcPrompt?.trim(),
-    );
+    // An item needs a title; a QC prompt is only required when it needs a photo.
+    const validItems = (area.items ?? []).filter((it) => {
+      if (!it?.title?.trim()) return false;
+      const needsPhoto = it.requiresPhoto !== false;
+      return !needsPhoto || !!it.qcPrompt?.trim();
+    });
     if (validItems.length === 0) continue;
 
     areaOrder += 1;
@@ -62,7 +70,8 @@ export async function POST(
             order: idx + 1,
             title: it.title!.trim(),
             tips: it.tips?.trim() || null,
-            qcPrompt: it.qcPrompt!.trim(),
+            qcPrompt: it.qcPrompt?.trim() || "",
+            requiresPhoto: it.requiresPhoto !== false,
           })),
         },
       },

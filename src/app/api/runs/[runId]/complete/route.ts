@@ -73,6 +73,7 @@ export async function POST(
               title: item.title,
               tips: item.tips,
               qcPrompt: item.qcPrompt,
+              requiresPhoto: item.requiresPhoto,
               blurry: r?.blurry ?? null,
               pass: r?.qcPass ?? null,
               confidence: r?.qcConfidence ?? null,

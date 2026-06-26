@@ -131,12 +131,21 @@ export default function AdminPage() {
 
   async function addItem(
     areaId: string,
-    fields: { title: string; tips: string; qcPrompt: string },
+    fields: { title: string; tips: string; qcPrompt: string; requiresPhoto: boolean },
   ) {
     await fetch("/api/admin/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ areaId, ...fields, requiresPhoto: true }),
+      body: JSON.stringify({ areaId, ...fields }),
+    });
+    loadAll();
+  }
+
+  async function updateItem(id: string, patch: Partial<Item>) {
+    await fetch(`/api/admin/items/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
     });
     loadAll();
   }
@@ -287,6 +296,7 @@ export default function AdminPage() {
             onAddArea={addArea}
             onDeleteArea={deleteArea}
             onAddItem={addItem}
+            onUpdateItem={updateItem}
             onDeleteItem={deleteItem}
             onBulkImport={bulkImport}
           />
@@ -303,6 +313,7 @@ function PropertyCard({
   onAddArea,
   onDeleteArea,
   onAddItem,
+  onUpdateItem,
   onDeleteItem,
   onBulkImport,
 }: {
@@ -313,8 +324,9 @@ function PropertyCard({
   onDeleteArea: (id: string) => void;
   onAddItem: (
     areaId: string,
-    fields: { title: string; tips: string; qcPrompt: string },
+    fields: { title: string; tips: string; qcPrompt: string; requiresPhoto: boolean },
   ) => void;
+  onUpdateItem: (id: string, patch: Partial<Item>) => void;
   onDeleteItem: (id: string) => void;
   onBulkImport: (propertyId: string, json: string) => Promise<string>;
 }) {
@@ -363,6 +375,7 @@ function PropertyCard({
             area={area}
             onDeleteArea={onDeleteArea}
             onAddItem={onAddItem}
+            onUpdateItem={onUpdateItem}
             onDeleteItem={onDeleteItem}
           />
         ))}
@@ -440,19 +453,22 @@ function AreaBlock({
   area,
   onDeleteArea,
   onAddItem,
+  onUpdateItem,
   onDeleteItem,
 }: {
   area: Area;
   onDeleteArea: (id: string) => void;
   onAddItem: (
     areaId: string,
-    fields: { title: string; tips: string; qcPrompt: string },
+    fields: { title: string; tips: string; qcPrompt: string; requiresPhoto: boolean },
   ) => void;
+  onUpdateItem: (id: string, patch: Partial<Item>) => void;
   onDeleteItem: (id: string) => void;
 }) {
   const [title, setTitle] = useState("");
   const [tips, setTips] = useState("");
   const [qcPrompt, setQcPrompt] = useState("");
+  const [requiresPhoto, setRequiresPhoto] = useState(true);
 
   return (
     <div className="rounded-lg border border-gray-200 p-3">
@@ -491,7 +507,17 @@ function AreaBlock({
               </button>
             </div>
             {it.tips && <div className="mt-0.5 text-gray-500">Tips: {it.tips}</div>}
-            <div className="mt-0.5 text-gray-500">QC: {it.qcPrompt}</div>
+            {it.requiresPhoto && it.qcPrompt && (
+              <div className="mt-0.5 text-gray-500">QC: {it.qcPrompt}</div>
+            )}
+            <label className="mt-1 flex items-center gap-1.5 text-xs text-gray-600">
+              <input
+                type="checkbox"
+                checked={it.requiresPhoto}
+                onChange={(e) => onUpdateItem(it.id, { requiresPhoto: e.target.checked })}
+              />
+              Requires photo
+            </label>
           </li>
         ))}
         {area.items.length === 0 && (
@@ -512,20 +538,32 @@ function AreaBlock({
           placeholder="Cleaning tips (optional)"
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
-        <textarea
-          value={qcPrompt}
-          onChange={(e) => setQcPrompt(e.target.value)}
-          placeholder="What should the AI check? (e.g. No visible hair in the tub or drain)"
-          rows={2}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        />
+        {requiresPhoto && (
+          <textarea
+            value={qcPrompt}
+            onChange={(e) => setQcPrompt(e.target.value)}
+            placeholder="What should the AI check? (e.g. No visible hair in the tub or drain)"
+            rows={2}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        )}
+        <label className="flex items-center gap-1.5 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            checked={requiresPhoto}
+            onChange={(e) => setRequiresPhoto(e.target.checked)}
+          />
+          Requires a photo + AI QC check
+        </label>
         <button
           onClick={() => {
-            if (!title.trim() || !qcPrompt.trim()) return;
-            onAddItem(area.id, { title, tips, qcPrompt });
+            if (!title.trim()) return;
+            if (requiresPhoto && !qcPrompt.trim()) return;
+            onAddItem(area.id, { title, tips, qcPrompt, requiresPhoto });
             setTitle("");
             setTips("");
             setQcPrompt("");
+            setRequiresPhoto(true);
           }}
           className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white"
         >

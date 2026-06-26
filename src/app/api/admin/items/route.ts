@@ -13,13 +13,19 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const areaId = body?.areaId as string | undefined;
   const title = (body?.title as string | undefined)?.trim();
-  const qcPrompt = (body?.qcPrompt as string | undefined)?.trim();
+  const qcPrompt = (body?.qcPrompt as string | undefined)?.trim() || "";
   const tips = (body?.tips as string | undefined)?.trim() || null;
   const requiresPhoto = body?.requiresPhoto !== false;
 
-  if (!areaId || !title || !qcPrompt) {
+  if (!areaId || !title) {
     return NextResponse.json(
-      { error: "areaId, title, and qcPrompt are required." },
+      { error: "areaId and title are required." },
+      { status: 400 },
+    );
+  }
+  if (requiresPhoto && !qcPrompt) {
+    return NextResponse.json(
+      { error: "A QC check is required for items that require a photo." },
       { status: 400 },
     );
   }

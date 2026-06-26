@@ -272,18 +272,24 @@ export default function CleanPage({
                           <h3 className="font-semibold">
                             {idx + 1}. {item.title}
                           </h3>
-                          {r && (
-                            <span
-                              className={
-                                "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold " +
-                                (r.blurry
-                                  ? "bg-amber-100 text-amber-800"
-                                  : r.pass
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-red-100 text-red-800")
-                              }
-                            >
-                              {r.blurry ? "Blurry" : r.pass ? "Pass" : "Fail"}
+                          {item.requiresPhoto ? (
+                            r && (
+                              <span
+                                className={
+                                  "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold " +
+                                  (r.blurry
+                                    ? "bg-amber-100 text-amber-800"
+                                    : r.pass
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-red-100 text-red-800")
+                                }
+                              >
+                                {r.blurry ? "Blurry" : r.pass ? "Pass" : "Fail"}
+                              </span>
+                            )
+                          ) : (
+                            <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                              No photo
                             </span>
                           )}
                         </div>
@@ -291,7 +297,12 @@ export default function CleanPage({
                         {item.tips && (
                           <p className="mt-1 text-sm text-gray-500">{item.tips}</p>
                         )}
-                        <p className="mt-1 text-xs text-gray-400">QC: {item.qcPrompt}</p>
+
+                        {!item.requiresPhoto ? null : (
+                          <>
+                        {item.qcPrompt && (
+                          <p className="mt-1 text-xs text-gray-400">QC: {item.qcPrompt}</p>
+                        )}
 
                         {st?.previewUrl && (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -347,6 +358,8 @@ export default function CleanPage({
                             }}
                           />
                         </label>
+                          </>
+                        )}
                       </li>
                     );
                   })}

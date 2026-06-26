@@ -4,6 +4,7 @@ export type PdfItem = {
   title: string;
   tips?: string | null;
   qcPrompt: string;
+  requiresPhoto: boolean;
   blurry: boolean | null;
   pass: boolean | null;
   confidence: number | null;
@@ -102,16 +103,16 @@ export async function buildReportPdf(input: PdfInput): Promise<Buffer> {
     (input.cleanerName ? ` • Cleaner: ${input.cleanerName}` : "");
   drawLines(summary, { size: 11, color: GRAY, gap: 6 });
 
-  const allItems = input.areas.flatMap((a) => a.items);
-  const passed = allItems.filter((i) => i.pass).length;
+  const photoItems = input.areas.flatMap((a) => a.items).filter((i) => i.requiresPhoto);
+  const passed = photoItems.filter((i) => i.pass).length;
   const skippedRooms = input.areas.filter((a) => a.skippedReason).length;
   drawLines(
-    `${passed} of ${allItems.length} items passed QC` +
+    `${passed} of ${photoItems.length} photo checks passed QC` +
       (skippedRooms > 0 ? `  •  ${skippedRooms} room(s) not cleaned` : ""),
     {
       font: bold,
       size: 12,
-      color: passed === allItems.length ? GREEN : AMBER,
+      color: passed === photoItems.length ? GREEN : AMBER,
       gap: 10,
     },
   );
@@ -149,6 +150,16 @@ export async function buildReportPdf(input: PdfInput): Promise<Buffer> {
       ensureSpace(40);
       drawLines(`${idx + 1}. ${item.title}`, { font: bold, size: 13, gap: 6 });
 
+    if (!item.requiresPhoto) {
+      // Reminder-only item — no photo / QC.
+      drawLines("No photo required", { font: bold, size: 11, color: GRAY, gap: 5 });
+      if (item.tips) {
+        drawLines(`Tips: ${item.tips}`, { size: 10, color: GRAY, gap: 4 });
+      }
+      y -= 6;
+      continue;
+    }
+
     // Status badge line
     const status = item.blurry
       ? "BLURRY — needs a clearer photo"
@@ -165,7 +176,9 @@ export async function buildReportPdf(input: PdfInput): Promise<Buffer> {
       gap: 5,
     });
 
-    drawLines(`Checked for: ${item.qcPrompt}`, { size: 10, color: GRAY, gap: 4 });
+    if (item.qcPrompt) {
+      drawLines(`Checked for: ${item.qcPrompt}`, { size: 10, color: GRAY, gap: 4 });
+    }
     if (item.tips) {
       drawLines(`Tips: ${item.tips}`, { size: 10, color: GRAY, gap: 4 });
     }
