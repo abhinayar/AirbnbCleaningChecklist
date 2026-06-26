@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type Item = {
@@ -86,6 +86,7 @@ export default function CleanPage({
 
   const [runId, setRunId] = useState("");
   const [propertyName, setPropertyName] = useState("");
+  const [propertyAddress, setPropertyAddress] = useState<string | null>(null);
   const [areas, setAreas] = useState<Area[]>([]);
   const [states, setStates] = useState<Record<string, ItemState>>({});
   const [skipped, setSkipped] = useState<Record<string, boolean>>({}); // areaId -> skipped
@@ -94,6 +95,27 @@ export default function CleanPage({
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState("");
   const [finishMsg, setFinishMsg] = useState("");
+
+  // Load the property name + address for the start screen (only the id is in the URL).
+  useEffect(() => {
+    let active = true;
+    fetch("/api/properties")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!active) return;
+        const p = (d.properties as { id: string; name: string; address: string | null }[])?.find(
+          (x) => x.id === params.propertyId,
+        );
+        if (p) {
+          setPropertyName(p.name);
+          setPropertyAddress(p.address ?? null);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [params.propertyId]);
 
   async function startRun(e: React.FormEvent) {
     e.preventDefault();
@@ -216,7 +238,12 @@ export default function CleanPage({
         <Link href="/" className="text-sm text-gray-400 underline">
           ← All properties
         </Link>
-        <h1 className="mt-4 text-2xl font-bold">Start cleaning</h1>
+        <h1 className="mt-4 text-2xl font-bold">
+          Start cleaning{propertyName ? `: ${propertyName}` : ""}
+        </h1>
+        {propertyAddress && (
+          <p className="mt-0.5 text-sm text-gray-500">{propertyAddress}</p>
+        )}
         <p className="mt-1 text-sm text-gray-500">Enter the property PIN to begin.</p>
         <form onSubmit={startRun} className="mt-6 space-y-4">
           <div>
