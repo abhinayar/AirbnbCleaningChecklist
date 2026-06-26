@@ -48,6 +48,7 @@ export default function CleanPage({
   const [areas, setAreas] = useState<Area[]>([]);
   const [states, setStates] = useState<Record<string, ItemState>>({});
   const [skipped, setSkipped] = useState<Record<string, boolean>>({}); // areaId -> skipped
+  const [checked, setChecked] = useState<Record<string, boolean>>({}); // itemId -> done
 
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState("");
@@ -118,9 +119,14 @@ export default function CleanPage({
       });
       if (!res.ok) throw new Error();
       if (skip) {
-        // Clear any local results for that room's items.
+        // Clear any local results + checks for that room's items.
         setStates((s) => {
           const next = { ...s };
+          for (const it of area.items) delete next[it.id];
+          return next;
+        });
+        setChecked((c) => {
+          const next = { ...c };
           for (const it of area.items) delete next[it.id];
           return next;
         });
@@ -130,12 +136,15 @@ export default function CleanPage({
     }
   }
 
-  // An area is "satisfied" if it's a skipped room, or all its required items have results.
+  // A photo item can only be checked off once its photo has been uploaded.
+  function canCheck(item: Item): boolean {
+    return item.requiresPhoto ? !!states[item.id]?.result : true;
+  }
+
+  // An area is "satisfied" if it's a skipped room, or every item is checked off.
   function areaSatisfied(area: Area): boolean {
     if (area.kind === "room" && skipped[area.id]) return true;
-    return area.items
-      .filter((i) => i.requiresPhoto)
-      .every((i) => states[i.id]?.result);
+    return area.items.every((i) => checked[i.id]);
   }
   const allSatisfied = areas.every(areaSatisfied);
 
@@ -222,12 +231,19 @@ export default function CleanPage({
   // ---------- Checklist stage ----------
   return (
     <main className="mx-auto max-w-md px-4 py-6">
-      <header className="mb-4">
-        <h1 className="text-xl font-bold">{propertyName}</h1>
-        <p className="text-sm text-gray-500">
-          {areas.filter(areaSatisfied).length}/{areas.length} areas complete
-        </p>
-      </header>
+      {(() => {
+        const allItems = areas.flatMap((a) => a.items);
+        const doneItems = allItems.filter((i) => checked[i.id]).length;
+        return (
+          <header className="mb-4">
+            <h1 className="text-xl font-bold">{propertyName}</h1>
+            <p className="text-sm text-gray-500">
+              {doneItems}/{allItems.length} items checked off ·{" "}
+              {areas.filter(areaSatisfied).length}/{areas.length} areas complete
+            </p>
+          </header>
+        );
+      })()}
 
       <div className="space-y-6">
         {areas.map((area) => {
@@ -267,12 +283,27 @@ export default function CleanPage({
                     const st = states[item.id];
                     const r = st?.result;
                     return (
-                      <li key={item.id} className="rounded-xl bg-white p-4 shadow-sm">
+                      <li
+                        key={item.id}
+                        className={
+                          "rounded-xl bg-white p-4 shadow-sm transition " +
+                          (checked[item.id] ? "ring-2 ring-green-400" : "")
+                        }
+                      >
                         <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-semibold">
+                          <h3
+                            className={
+                              "font-semibold " +
+                              (checked[item.id] ? "text-gray-400 line-through" : "")
+                            }
+                          >
                             {idx + 1}. {item.title}
                           </h3>
-                          {item.requiresPhoto ? (
+                          {checked[item.id] ? (
+                            <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
+                              ✓ Done
+                            </span>
+                          ) : item.requiresPhoto ? (
                             r && (
                               <span
                                 className={
@@ -289,7 +320,7 @@ export default function CleanPage({
                             )
                           ) : (
                             <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-                              No photo
+                              Reminder
                             </span>
                           )}
                         </div>
@@ -298,68 +329,84 @@ export default function CleanPage({
                           <p className="mt-1 text-sm text-gray-500">{item.tips}</p>
                         )}
 
-                        {!item.requiresPhoto ? null : (
+                        {item.requiresPhoto && (
                           <>
-                        {item.qcPrompt && (
-                          <p className="mt-1 text-xs text-gray-400">QC: {item.qcPrompt}</p>
-                        )}
+                            {st?.previewUrl && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={st.previewUrl}
+                                alt="preview"
+                                className="mt-3 max-h-56 w-full rounded-lg object-cover"
+                              />
+                            )}
 
-                        {st?.previewUrl && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={st.previewUrl}
-                            alt="preview"
-                            className="mt-3 max-h-56 w-full rounded-lg object-cover"
-                          />
-                        )}
+                            {st?.uploading && (
+                              <p className="mt-2 text-sm text-gray-500">Checking photo…</p>
+                            )}
+                            {st?.error && (
+                              <p className="mt-2 text-sm text-red-600">{st.error}</p>
+                            )}
+                            {r && (
+                              <p
+                                className={
+                                  "mt-2 text-sm " +
+                                  (r.blurry || !r.pass ? "text-red-700" : "text-green-700")
+                                }
+                              >
+                                {r.notes}
+                              </p>
+                            )}
 
-                        {st?.uploading && (
-                          <p className="mt-2 text-sm text-gray-500">Checking photo…</p>
-                        )}
-                        {st?.error && (
-                          <p className="mt-2 text-sm text-red-600">{st.error}</p>
-                        )}
-                        {r && (
-                          <p
-                            className={
-                              "mt-2 text-sm " +
-                              (r.blurry || !r.pass ? "text-red-700" : "text-green-700")
-                            }
-                          >
-                            {r.notes}
-                          </p>
-                        )}
-
-                        <label className="mt-3 block">
-                          <span
-                            className={
-                              "block cursor-pointer rounded-lg px-4 py-2 text-center text-sm font-medium " +
-                              (r && !r.blurry && r.pass
-                                ? "bg-gray-100 text-gray-700"
-                                : "bg-brand text-white")
-                            }
-                          >
-                            {st?.uploading
-                              ? "Uploading…"
-                              : r
-                                ? "Retake photo"
-                                : "Take / upload photo"}
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            className="hidden"
-                            disabled={st?.uploading}
-                            onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) uploadPhoto(item, f);
-                              e.target.value = "";
-                            }}
-                          />
-                        </label>
+                            <label className="mt-3 block">
+                              <span
+                                className={
+                                  "block cursor-pointer rounded-lg px-4 py-2 text-center text-sm font-medium " +
+                                  (r ? "bg-gray-100 text-gray-700" : "bg-brand text-white")
+                                }
+                              >
+                                {st?.uploading
+                                  ? "Uploading…"
+                                  : r
+                                    ? "Retake photo"
+                                    : "Take / upload photo"}
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                className="hidden"
+                                disabled={st?.uploading}
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) uploadPhoto(item, f);
+                                  e.target.value = "";
+                                }}
+                              />
+                            </label>
                           </>
                         )}
+
+                        <button
+                          type="button"
+                          disabled={!canCheck(item)}
+                          onClick={() =>
+                            setChecked((c) => ({ ...c, [item.id]: !c[item.id] }))
+                          }
+                          className={
+                            "mt-3 w-full rounded-lg px-4 py-2 text-sm font-semibold transition " +
+                            (checked[item.id]
+                              ? "bg-green-600 text-white"
+                              : canCheck(item)
+                                ? "bg-gray-900 text-white"
+                                : "cursor-not-allowed bg-gray-200 text-gray-400")
+                          }
+                        >
+                          {checked[item.id]
+                            ? "✓ Done — tap to undo"
+                            : !canCheck(item)
+                              ? "Add a photo to check off"
+                              : "Mark as done"}
+                        </button>
                       </li>
                     );
                   })}
