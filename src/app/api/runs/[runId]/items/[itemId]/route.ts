@@ -41,7 +41,9 @@ export async function POST(
 
   const form = await req.formData().catch(() => null);
   const file = form?.get("photo");
-  if (!(file instanceof File)) {
+  // Duck-type instead of `instanceof File` — the global `File` constructor isn't
+  // defined in all Node runtimes (Node < 20), which would throw a ReferenceError.
+  if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function") {
     return NextResponse.json({ error: "No photo uploaded." }, { status: 400 });
   }
 
