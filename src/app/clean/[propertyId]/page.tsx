@@ -28,6 +28,44 @@ type QcResult = {
 
 const CLEANERS = ["Leah", "Daniel", "Shubhi", "Abhi"];
 
+// Convert a camera photo (often HEIC on iPhones) to a downscaled JPEG in the
+// browser before upload. Safari can decode HEIC for display, so drawing it to a
+// canvas and exporting as JPEG gives us a format the server can always read.
+// Falls back to the original file if anything goes wrong.
+async function toUploadJpeg(
+  file: File,
+): Promise<{ blob: Blob; previewUrl: string }> {
+  const previewUrl = URL.createObjectURL(file);
+  try {
+    const img = document.createElement("img");
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("decode failed"));
+      img.src = previewUrl;
+    });
+    const maxDim = 1600;
+    const w = img.naturalWidth || 1;
+    const h = img.naturalHeight || 1;
+    const scale = Math.min(1, maxDim / Math.max(w, h));
+    const cw = Math.max(1, Math.round(w * scale));
+    const ch = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no canvas context");
+    ctx.drawImage(img, 0, 0, cw, ch);
+    const blob = await new Promise<Blob | null>((res) =>
+      canvas.toBlob((b) => res(b), "image/jpeg", 0.85),
+    );
+    if (!blob) throw new Error("toBlob failed");
+    return { blob, previewUrl };
+  } catch {
+    // Couldn't convert — send the original and let the server try.
+    return { blob: file, previewUrl };
+  }
+}
+
 type ItemState = {
   uploading: boolean;
   error?: string;
@@ -81,14 +119,14 @@ export default function CleanPage({
   }
 
   async function uploadPhoto(item: Item, file: File) {
-    const previewUrl = URL.createObjectURL(file);
+    const { blob, previewUrl } = await toUploadJpeg(file);
     setStates((s) => ({
       ...s,
       [item.id]: { uploading: true, previewUrl, error: undefined, result: undefined },
     }));
     try {
       const form = new FormData();
-      form.append("photo", file);
+      form.append("photo", blob, "photo.jpg");
       const res = await fetch(`/api/runs/${runId}/items/${item.id}`, {
         method: "POST",
         body: form,

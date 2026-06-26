@@ -55,7 +55,8 @@ export async function POST(
   let jpeg: Buffer;
   try {
     jpeg = (await normalizePhoto(inputBuffer)).buffer;
-  } catch {
+  } catch (e) {
+    console.error("photo normalize failed:", e);
     return NextResponse.json(
       { error: "Could not read that image. Try taking the photo again." },
       { status: 400 },
