@@ -155,6 +155,29 @@ export default function AdminPage() {
     loadAll();
   }
 
+  // Move an item up/down within its area by swapping positions and re-indexing
+  // the area's items to sequential order values (robust against gaps).
+  async function moveItem(area: Area, index: number, dir: -1 | 1) {
+    const arr = [...area.items];
+    const j = index + dir;
+    if (j < 0 || j >= arr.length) return;
+    [arr[index], arr[j]] = [arr[j], arr[index]];
+    await Promise.all(
+      arr.flatMap((it, idx) =>
+        it.order === idx + 1
+          ? []
+          : [
+              fetch(`/api/admin/items/${it.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ order: idx + 1 }),
+              }),
+            ],
+      ),
+    );
+    loadAll();
+  }
+
   async function bulkImport(propertyId: string, json: string): Promise<string> {
     let payload: unknown;
     try {
@@ -298,6 +321,7 @@ export default function AdminPage() {
             onAddItem={addItem}
             onUpdateItem={updateItem}
             onDeleteItem={deleteItem}
+            onMoveItem={moveItem}
             onBulkImport={bulkImport}
           />
         ))}
@@ -315,6 +339,7 @@ function PropertyCard({
   onAddItem,
   onUpdateItem,
   onDeleteItem,
+  onMoveItem,
   onBulkImport,
 }: {
   property: Property;
@@ -328,6 +353,7 @@ function PropertyCard({
   ) => void;
   onUpdateItem: (id: string, patch: Partial<Item>) => void;
   onDeleteItem: (id: string) => void;
+  onMoveItem: (area: Area, index: number, dir: -1 | 1) => void;
   onBulkImport: (propertyId: string, json: string) => Promise<string>;
 }) {
   const [name, setName] = useState(property.name);
@@ -377,6 +403,7 @@ function PropertyCard({
             onAddItem={onAddItem}
             onUpdateItem={onUpdateItem}
             onDeleteItem={onDeleteItem}
+            onMoveItem={onMoveItem}
           />
         ))}
         {property.areas.length === 0 && (
@@ -455,6 +482,7 @@ function AreaBlock({
   onAddItem,
   onUpdateItem,
   onDeleteItem,
+  onMoveItem,
 }: {
   area: Area;
   onDeleteArea: (id: string) => void;
@@ -464,6 +492,7 @@ function AreaBlock({
   ) => void;
   onUpdateItem: (id: string, patch: Partial<Item>) => void;
   onDeleteItem: (id: string) => void;
+  onMoveItem: (area: Area, index: number, dir: -1 | 1) => void;
 }) {
   const [title, setTitle] = useState("");
   const [tips, setTips] = useState("");
@@ -495,12 +524,15 @@ function AreaBlock({
       </div>
 
       <ul className="mt-3 space-y-2">
-        {area.items.map((it) => (
+        {area.items.map((it, idx) => (
           <ItemRow
             key={it.id}
             item={it}
+            index={idx}
+            total={area.items.length}
             onUpdateItem={onUpdateItem}
             onDeleteItem={onDeleteItem}
+            onMove={(dir) => onMoveItem(area, idx, dir)}
           />
         ))}
         {area.items.length === 0 && (
@@ -560,12 +592,18 @@ function AreaBlock({
 // An editable row for an existing checklist item. Saves each field on blur.
 function ItemRow({
   item,
+  index,
+  total,
   onUpdateItem,
   onDeleteItem,
+  onMove,
 }: {
   item: Item;
+  index: number;
+  total: number;
   onUpdateItem: (id: string, patch: Partial<Item>) => void;
   onDeleteItem: (id: string) => void;
+  onMove: (dir: -1 | 1) => void;
 }) {
   const [title, setTitle] = useState(item.title);
   const [tips, setTips] = useState(item.tips ?? "");
@@ -574,6 +612,26 @@ function ItemRow({
   return (
     <li className="space-y-1.5 rounded-lg bg-gray-50 p-2 text-sm">
       <div className="flex items-start gap-2">
+        <div className="flex shrink-0 flex-col">
+          <button
+            type="button"
+            onClick={() => onMove(-1)}
+            disabled={index === 0}
+            aria-label="Move up"
+            className="px-1 leading-none text-gray-500 disabled:text-gray-300"
+          >
+            ▲
+          </button>
+          <button
+            type="button"
+            onClick={() => onMove(1)}
+            disabled={index === total - 1}
+            aria-label="Move down"
+            className="px-1 leading-none text-gray-500 disabled:text-gray-300"
+          >
+            ▼
+          </button>
+        </div>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
